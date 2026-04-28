@@ -1,0 +1,67 @@
+# ── Local machine config ──────────────────────────────────────────────────────
+local.properties
+*.local.properties
+
+# ── Gradle ────────────────────────────────────────────────────────────────────
+.gradle/
+build/
+**/build/
+gradle-app.setting
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+.gradletasknamecache
+
+# ── Android Studio / IntelliJ ─────────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+*.class
+.DS_Store
+
+# Capture files
+captures/
+
+# Generated files
+gen/
+generated/
+
+# ── Kotlin / Java ─────────────────────────────────────────────────────────────
+*.class
+*.jar
+*.war
+*.aar
+*.ear
+out/
+
+# ── Keystore & signing ────────────────────────────────────────────────────────
+*.jks
+*.keystore
+*.storepass
+*.keypass
+keystore/
+release/
+
+# ── Proguard mapping (generated each release build) ──────────────────────────
+mapping.txt
+
+# ── KSP / KAPT caches ─────────────────────────────────────────────────────────
+**/.kotlin/
+**/kspCaches/
+**/kotlinToolingMetadata/
+
+# ── OS artefacts ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Release artifacts ────────────────────────────────────────────────────────
+dist/
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+*.orig
+*.rej
+*.swp
+*.bak
+*~
+app/build
