@@ -65,3 +65,7 @@ dist/
 *.bak
 *~
 app/build
+
+# ── Release script & secrets (contain signing credentials) ───────────────────
+.release-secrets
+release.sh
