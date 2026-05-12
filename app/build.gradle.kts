@@ -56,6 +56,7 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs { pickFirsts += listOf("**/*.so") }
     }
 }
 
@@ -68,6 +69,7 @@ dependencies {
     implementation(project(":feature:widgets"))
     implementation(project(":feature:settings"))
     implementation(project(":feature:search"))
+    implementation(project(":feature:ai"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -83,6 +85,10 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.accompanist.permissions)
+
+    // sherpa-onnx pre-built AAR — must live in the app module for local AAR deps
+    implementation(fileTree(mapOf("dir" to "${rootProject.projectDir}/libs", "include" to listOf("*.aar"))))
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)

@@ -1,15 +1,28 @@
 package com.tigerpaw.launcher.feature.home
 
 import android.app.WallpaperManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +43,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -43,8 +58,8 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoFile
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +82,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -74,6 +91,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,13 +109,18 @@ private val ClockFormatter = DateTimeFormatter.ofPattern("HH:mm")
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit = {},
-    onOpenWidgets: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
     searchViewModel: InlineSearchViewModel = hiltViewModel(),
 ) {
     val scope = rememberCoroutineScope()
     var editModeFlash by remember { mutableStateOf(false) }
     var searchActive by remember { mutableStateOf(false) }
+
+    val clockSize by viewModel.clockSize.collectAsState()
+    val clockWeight by viewModel.clockWeight.collectAsState()
+    val clockAlign by viewModel.clockAlign.collectAsState()
+    val onboardingDone by viewModel.onboardingDone.collectAsState()
+    val showBattery by viewModel.showBattery.collectAsState()
 
     val query by searchViewModel.query.collectAsState()
     val grouped by searchViewModel.results.collectAsState()
@@ -110,6 +133,19 @@ fun HomeScreen(
         searchViewModel.clearQuery()
     }
 
+    // Close search when the app loses window focus (e.g. another app comes forward).
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
+                searchActive = false
+                searchViewModel.clearQuery()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -118,7 +154,7 @@ fun HomeScreen(
                     detectTapGestures(
                         onLongPress = {
                             scope.launch {
-                                editModeFlash = true; delay(160); editModeFlash = false; onOpenWidgets()
+                                editModeFlash = true; delay(160); editModeFlash = false; onOpenSettings()
                             }
                         },
                     )
@@ -141,20 +177,23 @@ fun HomeScreen(
                     .statusBarsPadding()
                     .padding(horizontal = 24.dp, vertical = 16.dp),
             ) {
-                Row(
+                val clockHAlign = when (clockAlign) {
+                    "center" -> Alignment.CenterHorizontally
+                    else -> Alignment.Start
+                }
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalAlignment = clockHAlign,
                 ) {
-                    Clock()
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White.copy(alpha = 0.9f))
+                    Clock(size = clockSize, weight = clockWeight, align = clockAlign)
+                    if (showBattery) {
+                        Spacer(Modifier.height(10.dp))
+                        BatteryIndicator(align = clockAlign)
                     }
                 }
             }
         }
 
-        // Bottom anchor — bar is ALWAYS here, never moves
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -224,6 +263,11 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    // First-launch onboarding overlay
+    if (!onboardingDone) {
+        OnboardingOverlay(onDismiss = viewModel::dismissOnboarding)
     }
 
     LaunchedEffect(searchActive) {
@@ -518,7 +562,7 @@ private fun ActionResultRow(result: SearchResult.AppAction, onClick: () -> Unit)
                 Text(result.appLabel, style = MaterialTheme.typography.labelSmall, color = accent.copy(alpha = 0.9f))
             }
             Box(Modifier.clip(RoundedCornerShape(6.dp)).background(accent.copy(alpha = 0.1f)).padding(horizontal = 7.dp, vertical = 2.dp)) {
-                Text("shortcut", style = MaterialTheme.typography.labelSmall, color = accent.copy(alpha = 0.7f))
+                Text(result.appLabel, style = MaterialTheme.typography.labelSmall, color = accent.copy(alpha = 0.7f))
             }
         }
     }
@@ -571,9 +615,17 @@ private fun mimeCategory(mime: String): String = when {
 // ── Clock ─────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun Clock() {
+private fun Clock(size: String, weight: String, align: String) {
     val context = LocalContext.current
-    val time = remember { LocalTime.now().format(ClockFormatter) }
+
+    // Tick every second so the display stays current
+    var time by remember { mutableStateOf(LocalTime.now().format(ClockFormatter)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            time = LocalTime.now().format(ClockFormatter)
+            kotlinx.coroutines.delay(1_000L)
+        }
+    }
 
     val wallpaperLuminance = remember {
         try {
@@ -585,12 +637,210 @@ private fun Clock() {
     val textColor = if (isLightWallpaper) Color(0xFF1A1A1A) else Color.White
     val shadowColor = if (isLightWallpaper) Color.White.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.55f)
 
+    val fontSize = when (size) {
+        "small" -> 40.sp
+        "large" -> 80.sp
+        else    -> 56.sp
+    }
+    val fontWeight = when (weight) {
+        "regular" -> FontWeight.Normal
+        "bold"    -> FontWeight.Bold
+        else      -> FontWeight.Light
+    }
+    val textAlign = if (align == "center") TextAlign.Center else TextAlign.Start
+
     Text(
         text = time,
         style = MaterialTheme.typography.displayMedium.copy(
-            fontWeight = FontWeight.Light,
+            fontWeight = fontWeight,
+            fontSize = fontSize,
             shadow = Shadow(color = shadowColor, offset = Offset(0f, 2f), blurRadius = 12f),
         ),
         color = textColor,
+        textAlign = textAlign,
     )
+}
+
+// ── Onboarding overlay ────────────────────────────────────────────────────────
+
+@Composable
+private fun OnboardingOverlay(onDismiss: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.65f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(32.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = "Welcome to TigerPaw",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "Swipe up or tap the search bar to find apps and files.\n\nLong-press anywhere on the home screen to open Settings.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                textAlign = TextAlign.Center,
+            )
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text("Got it")
+            }
+        }
+    }
+}
+
+// ── Battery indicator ─────────────────────────────────────────────────────────
+
+private data class BatteryState(val level: Int, val charging: Boolean)
+
+private fun getBatteryState(context: Context): BatteryState {
+    val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+    val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+    val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+    val pct = if (scale > 0) (level * 100 / scale).coerceIn(0, 100) else 0
+    val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                   status == BatteryManager.BATTERY_STATUS_FULL
+    return BatteryState(pct, charging)
+}
+
+@Composable
+private fun BatteryIndicator(align: String) {
+    val context = LocalContext.current
+
+    var battery by remember { mutableStateOf(getBatteryState(context)) }
+
+    // Poll every 5 seconds so charging state is always current, even when the
+    // sticky ACTION_BATTERY_CHANGED broadcast isn't re-delivered.
+    LaunchedEffect(Unit) {
+        while (true) {
+            battery = getBatteryState(context)
+            kotlinx.coroutines.delay(5_000L)
+        }
+    }
+
+    // Also update immediately on any battery broadcast (level ticks, plug/unplug).
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                battery = getBatteryState(ctx)
+            }
+        }
+        context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+
+    val fraction = battery.level / 100f
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "battery-fill",
+    )
+
+    // Charging pulse animation
+    val infiniteTransition = rememberInfiniteTransition(label = "charging-pulse")
+    val chargePulse by infiniteTransition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "charge-alpha",
+    )
+
+    // Colors keyed on level
+    val baseColor = when {
+        battery.charging -> Color(0xFF4ADE80)  // green while charging
+        fraction <= 0.15f -> Color(0xFFEF4444) // red critical
+        fraction <= 0.30f -> Color(0xFFFACC15) // amber low
+        else -> Color.White.copy(alpha = 0.85f)
+    }
+    val fillColor = if (battery.charging) baseColor.copy(alpha = chargePulse) else baseColor
+    val trackColor = Color.White.copy(alpha = 0.15f)
+    val barWidth = 200.dp
+    val barHeight = 10.dp
+
+    val horizontalAlignment = if (align == "center") Alignment.CenterHorizontally else Alignment.Start
+
+    Column(
+        modifier = Modifier.wrapContentHeight(),
+        horizontalAlignment = horizontalAlignment,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        // Bar + end cap
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(barWidth)
+                    .height(barHeight)
+                    .clip(RoundedCornerShape(50))
+                    .background(trackColor),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedFraction)
+                        .height(barHeight)
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = if (battery.charging)
+                                    listOf(fillColor.copy(alpha = 0.7f), fillColor)
+                                else
+                                    listOf(fillColor.copy(alpha = 0.6f), fillColor),
+                            ),
+                        )
+                        .clip(RoundedCornerShape(50)),
+                )
+                // Sheen overlay
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                            ),
+                        ),
+                )
+            }
+        }
+
+        // Percentage + charging label
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "${battery.level}%",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    shadow = Shadow(color = Color.Black.copy(alpha = 0.5f), offset = Offset(0f, 1f), blurRadius = 4f),
+                ),
+                color = fillColor,
+            )
+            if (battery.charging) {
+                Text(
+                    text = "⚡",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF4ADE80).copy(alpha = chargePulse),
+                )
+            }
+        }
+    }
 }

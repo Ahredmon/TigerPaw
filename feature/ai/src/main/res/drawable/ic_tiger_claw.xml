@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Tiger claw mark icon — three curved slash marks on an orange circle.
+    Designed to read clearly at 48–160 dp.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- Orange background circle -->
+    <path
+        android:fillColor="#E65C00"
+        android:pathData="M50,2 A48,48 0 1,1 49.999,2 Z" />
+
+    <!-- Subtle inner glow ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF8C40"
+        android:strokeWidth="2"
+        android:pathData="M50,8 A42,42 0 1,1 49.999,8 Z" />
+
+    <!-- Left claw slash — curves slightly right then left -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:pathData="M28,22 Q22,46 32,74" />
+
+    <!-- Centre claw slash -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:pathData="M43,17 Q37,41 47,70" />
+
+    <!-- Right claw slash -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:pathData="M58,19 Q52,43 62,72" />
+
+</vector>

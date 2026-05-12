@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Process
 import android.provider.MediaStore
+import android.util.Log
 import com.tigerpaw.launcher.core.data.apps.AppRepository
 import com.tigerpaw.launcher.core.data.prefs.LauncherPreferences
 import com.tigerpaw.launcher.core.data.usage.UsageRepository
@@ -18,7 +19,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
@@ -33,6 +33,10 @@ class SearchRepository @Inject constructor(
     private val prefs: LauncherPreferences,
     private val usageRepository: UsageRepository,
 ) {
+    companion object {
+        private const val TAG = "TigerPaw/Search"
+    }
+
     fun suggestions(): Flow<List<SearchResult.Suggestion>> =
         combine(appRepository.getInstalledApps(), usageRepository.getSuggestions()) { apps, summaries ->
             val appMap = apps.associateBy { it.packageName }
@@ -45,6 +49,7 @@ class SearchRepository @Inject constructor(
 
     fun search(query: String): Flow<List<SearchResult>> {
         if (query.isBlank()) return flowOf(emptyList())
+        Log.d(TAG, "search: query='$query'")
 
         val appsFlow: Flow<List<SearchResult.App>> = combine(
             appRepository.getInstalledApps(),
@@ -65,6 +70,7 @@ class SearchRepository @Inject constructor(
         }
 
         return combine(appsFlow, filesFlow, actionsFlow) { apps, files, actions ->
+            Log.d(TAG, "search results for '$query': ${apps.size} apps, ${actions.size} actions, ${files.size} files")
             buildList {
                 addAll(apps)
                 addAll(actions)
@@ -88,10 +94,13 @@ class SearchRepository @Inject constructor(
         val sortOrder = "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC LIMIT $FILE_LIMIT"
 
         return try {
-            context.contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
+            val results = context.contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
                 ?.use { cursor -> cursor.toFileResults(uri) }
                 ?: emptyList()
-        } catch (_: Exception) {
+            Log.d(TAG, "searchFiles '$query': ${results.size} results")
+            results
+        } catch (e: Exception) {
+            Log.w(TAG, "searchFiles '$query' failed", e)
             emptyList()
         }
     }
@@ -127,11 +136,12 @@ class SearchRepository @Inject constructor(
                     LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED
             val shortcutQuery = LauncherApps.ShortcutQuery().apply { setQueryFlags(flags) }
             val user = Process.myUserHandle()
-            launcherApps.getShortcuts(shortcutQuery, user)
+            val results = launcherApps.getShortcuts(shortcutQuery, user)
                 ?.filter { shortcut ->
                     val label = shortcut.shortLabel?.toString()
                         ?: shortcut.longLabel?.toString() ?: return@filter false
                     label.contains(query, ignoreCase = true) ||
+                            (shortcut.longLabel?.toString() ?: "").contains(query, ignoreCase = true) ||
                             shortcut.`package`.contains(query, ignoreCase = true)
                 }
                 ?.take(ACTION_LIMIT)
@@ -146,8 +156,9 @@ class SearchRepository @Inject constructor(
                             context.resources.displayMetrics.densityDpi,
                         )
                     } catch (_: Exception) { null }
-                    val label = shortcut.shortLabel?.toString()
-                        ?: shortcut.longLabel?.toString() ?: return@mapNotNull null
+                    // Prefer longLabel (e.g. "Message Alice") over shortLabel (e.g. "Alice")
+                    val label = shortcut.longLabel?.toString()
+                        ?: shortcut.shortLabel?.toString() ?: return@mapNotNull null
                     SearchResult.AppAction(
                         shortcutId = shortcut.id,
                         packageName = shortcut.`package`,
@@ -157,7 +168,10 @@ class SearchRepository @Inject constructor(
                     )
                 }
                 ?: emptyList()
-        } catch (_: Exception) {
+            Log.d(TAG, "searchActions '$query': ${results.size} results")
+            results
+        } catch (e: Exception) {
+            Log.w(TAG, "searchActions '$query' failed", e)
             emptyList()
         }
     }
